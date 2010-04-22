@@ -3,7 +3,6 @@ module Integrity
     class Deploy < Notifier::Base
       attr_reader :deploy
       
-#       http://matedriven.com.ar/2009/09/21/continuous-notification-with-integrity.html
       def self.to_haml
         <<-haml
 %p.normal
@@ -14,19 +13,43 @@ module Integrity
 
       def initialize(build, config={})
         @deploy = config.delete("deploy")
-        log("Initiatizing... deploy command is '#{@deploy}'")
+        log("Initializing... deploy command is '#{deploy}'")
         super
       end
 
       def deliver!
-        log("Full build message:\n#{full_message}")
-        system("echo '#{build.status} - #{build.commit.identifier}' >> /tmp/deploy_notifier")
-        log("FAILED") if build.failed?
-        log("SUCCESS") if build.successful?
+        if build.successful?
+          run_deploy
+        else
+          skip_deploy
+        end
+      end
+
+      def run_deploy
+        log('Build successful, deploy triggered.')
+        cmd = "(cd #{repo.directory} && #{deploy} 2>&1)"
+        log(cmd)
+        output = IO.popen(cmd, "r") { |io| io.read }
+        status = $?.success?
+        log("Deploy #{build.commit.identifier} exited with #{status} got:\n#{output}")
+      end
+
+      def skip_deploy
+        log('Build failed, no deploy triggered.')
       end
 
       def log(msg)
         Integrity.log('Deploy') {msg}
+      end
+
+      # this should exist in build.rb, but doesn't
+      def repo
+        @repo ||= Repository.new(
+                                 build.id,
+                                 build.project.uri,
+                                 build.project.branch,
+                                 build.commit.identifier
+                                 )
       end
     end
 
